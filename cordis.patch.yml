@@ -1,16 +1,34 @@
-# DSH Memory Plugin
-#
-# 记忆系统六项升级：标题、分层、固定、注入、卡片、搜索
-# 复制到你的 DSH profile (e.g. C:\Users\<user>\.dsh\profiles\web\)
+﻿# Your patch layer for this dsh profile, applied after every bundle layer:
+# a top-level YAML array of loader patch entries (id-targeted config
+# overrides, disables, and insert lists; `!!js` expressions allowed).
 
+# The shared memory service. `memhost3.mjs` sits beside this patch file and
+# publishes the `memory` service (durable store under `$DSH_HOME/memory/`).
+# It is a HOST row: the service is read by tool rows from more than one
+# session, so it cannot live behind any preset realm.
+# v3: title/keywords/scope/pinned fields, keyword relevance search,
+# per-scope filters, pin/unpin; all returned entries are undefined-free JSON.
 - insert:
     - id: memory-host
       name: './memhost3.mjs'
 
-- insert:
+# The automatic memory row. `auto-memory5.mjs` listens to
+# `agent/turn-stopping` and writes one entry per human-initiated turn into
+# the shared `memory` service. v5: 鍊熼壌 Memorax Code 鍥涚被 Memory 鏋舵瀯
+# (coding/repo/personal/procedure)锛孡LM 缁撴瀯鍖栬緭鍑鸿嚜鍔ㄥ垎绫伙紝鎸夌被鍨嬫《鍒?# 杩涜鐭ヨ瘑鍗＄墖鑱氱被鍚堝苟銆侳ire-and-forget锛氫笉闃诲浼氳瘽鍏抽棴銆侶OST 琛岋紝蹇呴』鍦?# `memory-host` 涔嬪悗銆?- insert:
     - id: auto-memory
-      name: './auto-memory4.mjs'
+      name: './auto-memory5.mjs'
 
+# The memory recall injection row. `memory-inject2.mjs` registers one
+# `systemPrompt.section` (`memory:recall`, order 95) whose text is a short
+# snapshot of the shared store 鈥?pinned entries first, then the newest auto
+# summaries 鈥?so long-term knowledge is available to every model request
+# without the model calling `memory_search`. It injects into the HOST
+# `systemPrompt` registry, so it cannot live behind any preset realm.
+# Order: after the memory service (and ideally after auto-memory so refresh
+# sees newest entries); refreshes on a 15s timer and on turn-stopping.
 - insert:
     - id: memory-inject
       name: './memory-inject2.mjs'
+
+# 鈹€鈹€ Consolidation is now baked into auto-memory4.mjs (scope-bucketed, chunked)
