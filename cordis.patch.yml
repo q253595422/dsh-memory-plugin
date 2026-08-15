@@ -1,0 +1,16 @@
+# DSH Memory Plugin
+#
+# 记忆系统六项升级：标题、分层、固定、注入、卡片、搜索
+# 复制到你的 DSH profile (e.g. C:\Users\<user>\.dsh\profiles\web\)
+
+- insert:
+    - id: memory-host
+      name: './memhost3.mjs'
+
+- insert:
+    - id: auto-memory
+      name: './auto-memory4.mjs'
+
+- insert:
+    - id: memory-inject
+      name: './memory-inject2.mjs'
