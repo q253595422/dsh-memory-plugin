@@ -1,4 +1,4 @@
-# DSH Memory Plugin
+﻿# DSH Memory Plugin
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的跨会话持久记忆系统，通过 Cordis 宿主行（host-plane）实现六项能力升级。
 
@@ -45,7 +45,7 @@
 
 ```powershell
 $PROFILE = "$env:USERPROFILE\.dsh\profiles\web"
-Copy-Item memhost3.mjs auto-memory4.mjs memory-inject2.mjs -Destination $PROFILE
+Copy-Item memhost3.mjs auto-memory5.mjs memory-inject2.mjs -Destination $PROFILE
 ```
 
 ### 2. 追加 patch 配置到 `cordis.patch.yml`
@@ -59,7 +59,7 @@ Copy-Item memhost3.mjs auto-memory4.mjs memory-inject2.mjs -Destination $PROFILE
 # auto-memory: turn-stopping listener + consolidation (HOST row)
 - insert:
     - id: auto-memory
-      name: './auto-memory4.mjs'
+      name: './auto-memory5.mjs'
 
 # memory-inject: systemPrompt injection (HOST row)
 - insert:
@@ -80,7 +80,7 @@ Copy-Item memhost3.mjs auto-memory4.mjs memory-inject2.mjs -Destination $PROFILE
 
 ## 工作原理
 
-### 自动记忆 (`auto-memory4.mjs`)
+### 自动记忆 (`auto-memory5.mjs`)
 
 1. 监听 `agent/turn-stopping` 事件
 2. 提取本轮 `userText` + `assistantText`
@@ -122,7 +122,7 @@ Copy-Item memhost3.mjs auto-memory4.mjs memory-inject2.mjs -Destination $PROFILE
 | 文件 | 大小 | 用途 |
 |---|---|---|
 | `memhost3.mjs` | ~12KB | 宿主 memory 服务（save/search/list/forget/pin/stats） |
-| `auto-memory4.mjs` | ~14KB | 自动记忆 + consolidation（turn-stopping 监听） |
+| `auto-memory5.mjs` | ~14KB | 自动记忆 + consolidation（turn-stopping 监听） |
 | `memory-inject2.mjs` | ~3KB | systemPrompt 注入（15s 刷新） |
 | `memtools2.mjs` | ~8KB | Agent 工具层（6 个 memory 工具） |
 | `cordis.patch.yml` | ~400B | 宿主 patch 配置示例 |
@@ -131,3 +131,4 @@ Copy-Item memhost3.mjs auto-memory4.mjs memory-inject2.mjs -Destination $PROFILE
 ## License
 
 MIT — 欢迎 fork 和改进！
+

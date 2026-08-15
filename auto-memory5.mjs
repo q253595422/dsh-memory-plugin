@@ -1,11 +1,18 @@
-// auto-memory4.mjs — host-plane automatic memory v4 (with consolidation).
+// auto-memory5.mjs — host-plane automatic memory v5 (Memorax-inspired).
 //
-// Combines the v3 automatic-summary logic with a lightweight consolidation
-// check: after each turn record, if unconsolidated auto entries >= 12, fire
-// an async bucket-based clustering pass (scope-bucketed, each chunk capped
-// at 6 entries × 80 chars) that writes merged knowledge-card entries (`card`
-// tag) and marks members `consolidated`. Same turn-stopping fire-and-forget
-// pattern — turn close is never blocked.
+// 借鉴 Memorax Code 的四类 Memory 架构：
+// - coding: 工程经验（已验证的修复、失败方案、设计依据、常见陷阱）
+// - repo: 仓库知识（架构地图、模块职责、历史证据）
+// - personal: 个人偏好（沟通风格、解释深度、结果呈现）
+// - procedure: 流程记忆（可复用步骤、检查清单、前置条件）
+//
+// v5 改进：
+// 1. 自动分类：根据对话内容自动识别 memory type
+// 2. 仓库作用域：按 cwd 自动识别 project scope
+// 3. 结构化摘要：LLM 输出包含 type/title/summary/keywords
+// 4. 知识卡片：≥12 条同类候选自动 LLM 聚类合并
+//
+// Fire-and-forget inside turn-stopping; never blocks turn close.
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
@@ -70,7 +77,7 @@ function textSimilarity(a, b) {
   return inter / (A.size + B.size - inter)
 }
 
-/** The user line of a stored auto entry (`用户：…` or the title for v3), or ''. */
+/** The user line of a stored auto entry, or ''. */
 function userLineOf(entry) {
   const content = String(entry && entry.content ? entry.content : '')
   const idx = content.indexOf('\n')
@@ -78,7 +85,11 @@ function userLineOf(entry) {
   return first.replace(/^用户[:：]\s*/, '').trim()
 }
 
-/** Summarize conversation text into {title, summary, keywords} through the harness LLM. */
+/** Memory types inspired by Memorax Code */
+const MEMORY_TYPES = ['coding', 'repo', 'personal', 'procedure']
+const DEFAULT_TYPE = 'coding'
+
+/** Summarize conversation text into structured memory via LLM. */
 async function summarizeStructured(ctx, agent, userText, assistantText) {
   const llm = ctx.get('llm')
   const provider = agent && agent.options && agent.options.provider
@@ -89,7 +100,18 @@ async function summarizeStructured(ctx, agent, userText, assistantText) {
     const stream = llm.stream({
       provider,
       model,
-      system: '你是记忆整理助手。把用户与助手的对话整理成结构化记忆。只输出一个 JSON 对象，不要任何其他文本。格式：{"title":"不超过12字的会话标题","summary":"1-3句中文要点，只保留事实、决定、成果与关键偏好","keywords":["2到5个检索关键词，覆盖本回合主题，可以是任意表述"]}',
+      system: `你是记忆整理助手。分析对话内容，提取有价值的记忆。
+只输出一个 JSON 对象，不要任何其他文本。格式：
+{
+  "type": "${MEMORY_TYPES.join('|')}中的一个",
+  "title": "不超过12字的标题",
+  "summary": "1-3句中文要点",
+  "keywords": ["2到5个检索关键词"]
+}
+- coding: 工程经验（修复、失败方案、设计依据、陷阱）
+- repo: 仓库知识（架构、模块、历史）
+- personal: 个人偏好（沟通风格、解释深度）
+- procedure: 流程记忆（步骤、检查清单、条件）`,
       messages: [{
         role: 'user',
         id: `auto-sum-${Date.now().toString(36)}`,
@@ -97,7 +119,7 @@ async function summarizeStructured(ctx, agent, userText, assistantText) {
         content: [{ type: 'text', text: prompt }],
       }],
       temperature: 0.2,
-      maxTokens: 350,
+      maxTokens: 400,
     })
     let text = ''
     for await (const chunk of stream) {
@@ -109,13 +131,17 @@ async function summarizeStructured(ctx, agent, userText, assistantText) {
     const end = cleaned.lastIndexOf('}')
     if (start === -1 || end <= start) throw new Error('no JSON object in model output')
     const parsed = JSON.parse(cleaned.slice(start, end + 1))
+    
+    // Validate and normalize
+    const type = MEMORY_TYPES.includes(parsed.type) ? parsed.type : DEFAULT_TYPE
     const summary = typeof parsed.summary === 'string' ? parsed.summary.replace(/\s+/g, ' ').trim() : ''
     const title = typeof parsed.title === 'string' ? parsed.title.trim().slice(0, 24) : ''
     const keywords = Array.isArray(parsed.keywords)
       ? parsed.keywords.map(k => String(k).trim()).filter(Boolean).slice(0, 6)
       : []
+    
     if (summary === '') throw new Error('empty summary')
-    return { title, summary, keywords }
+    return { type, title, summary, keywords }
   } catch (error) {
     console.error('[auto-memory] structured summarization failed:', error)
     return null
@@ -127,10 +153,13 @@ async function recordTurn(ctx, memory, agent, userText, assistantText) {
   const fallbackContent = `用户：${clip(userText, 400)}\n助手：${clip(assistantText || '（本轮无文本回复）', 1400)}`
   const structured = await summarizeStructured(ctx, agent, userText, assistantText)
   const fallbackTitle = clip(userText.replace(/^\s*(用户|继续|好的|好)\s*[:：]?\s*/, ''), 24) || '对话记录'
+  
+  const type = structured ? structured.type : DEFAULT_TYPE
   const title = structured ? structured.title : fallbackTitle
   const content = structured ? structured.summary : fallbackContent
   const keywords = structured ? structured.keywords : []
 
+  // Determine scope from the agent's session cwd (project) or user tier.
   let scope = 'user'
   let cwd
   try {
@@ -141,8 +170,10 @@ async function recordTurn(ctx, memory, agent, userText, assistantText) {
     }
   } catch (_e) { /* header unavailable */ }
 
+  // Dedupe/merge: compare the incoming user request against stored auto user
+  // lines, skipping pinned entries (pinned is never auto-merged).
   try {
-    const existing = await memory.list({ tags: ['auto'], limit: 200 })
+    const existing = await memory.list({ tags: [type], limit: 200 })
     if (existing.length > 0) {
       const incomingUser = clip(userText, 400)
       let best = null
@@ -157,7 +188,7 @@ async function recordTurn(ctx, memory, agent, userText, assistantText) {
       }
       if (best && bestSim >= 0.55 && typeof best.id === 'string') {
         const tags = new Set(Array.isArray(best.tags) ? best.tags.map(String) : [])
-        tags.add('auto')
+        tags.add(type)
         tags.add('conversation')
         return await memory.save({
           id: best.id,
@@ -176,7 +207,7 @@ async function recordTurn(ctx, memory, agent, userText, assistantText) {
 
   return await memory.save({
     content,
-    tags: ['auto', 'conversation'],
+    tags: [type, 'conversation'],
     title,
     keywords,
     scope,
@@ -184,7 +215,7 @@ async function recordTurn(ctx, memory, agent, userText, assistantText) {
   })
 }
 
-// ─── Consolidation helpers ───────────────────────────────────────────────────
+// ─── Consolidation helpers (Memorax-inspired knowledge cards) ───────────────
 
 const MIN_CANDIDATES = 12
 const CHUNK_SIZE = 6
@@ -247,73 +278,91 @@ async function clusterBatch(ctx, agent, batch) {
   }
 }
 
-/** One consolidation pass: bucket by scope, chunk each bucket, cluster & write cards. */
+/** One consolidation pass: bucket by type+scope, chunk each bucket, cluster & write cards. */
 async function consolidate(ctx, agent) {
   const memory = ctx.get('memory')
   if (!memory) { apt('consolidate: no memory'); return }
   const all = await memory.list({ limit: 500 })
-  const candidates = all.filter(e =>
-    Array.isArray(e.tags) && e.tags.includes('auto') &&
-    !e.pinned &&
-    !(Array.isArray(e.tags) && e.tags.includes(CONSOLIDATED_TAG)) &&
-    !(Array.isArray(e.tags) && e.tags.includes(CARD_TAG)))
-  apt(`consolidate: candidates=${candidates.length}`)
-  if (candidates.length < MIN_CANDIDATES) return
-
-  // Bucket by scope
-  const buckets = {}
-  for (const e of candidates) {
-    const scope = e.scope === 'project' || e.scope === 'session' ? e.scope : 'user'
-    if (!buckets[scope]) buckets[scope] = []
-    buckets[scope].push(e)
+  
+  // Group by type (Memorax-inspired)
+  const byType = {}
+  for (const t of MEMORY_TYPES) byType[t] = []
+  byType['mixed'] = []
+  
+  for (const e of all) {
+    const tags = Array.isArray(e.tags) ? e.tags : []
+    const type = MEMORY_TYPES.find(t => tags.includes(t)) || 'mixed'
+    if (tags.includes('auto') && !e.pinned && 
+        !tags.includes(CONSOLIDATED_TAG) && !tags.includes(CARD_TAG)) {
+      byType[type].push(e)
+    }
   }
-
+  
   let totalCards = 0
-  for (const [scope, list] of Object.entries(buckets)) {
-    if (list.length < 4) continue
-    for (let off = 0; off < list.length; off += CHUNK_SIZE) {
-      const chunk = list.slice(off, off + CHUNK_SIZE)
-      const groups = await clusterBatch(ctx, agent, chunk)
-      if (!groups) continue
-      const idx = {}
-      chunk.forEach((e, i) => { idx[i] = e })
-      for (const g of groups) {
-        const idxs = (Array.isArray(g.memberIndexes) ? g.memberIndexes : [])
-          .map(n => Number(n)).filter(n => Number.isInteger(n) && idx[n])
-        if (!idxs.length) continue
-        const members = idxs.map(n => idx[n])
-        const name = String(g.name || '卡').trim().slice(0, 24)
-        const summary = String(g.summary || '').replace(/\s+/g, ' ').trim()
-        if (!summary) continue
-        const kw = new Set()
-        members.forEach(m => (Array.isArray(m.keywords) || []).forEach(k => k && k.trim() && kw.add(k.trim())))
-        try {
-          await memory.save({
-            content: summary,
-            tags: ['auto', 'conversation', CARD_TAG],
-            title: name,
-            keywords: [...kw].slice(0, 6),
-            scope,
-          })
-          for (const m of members) {
+  
+  for (const [type, list] of Object.entries(byType)) {
+    if (list.length < MIN_CANDIDATES) continue
+    
+    // Bucket by scope within type
+    const buckets = { user: [], project: [], session: [] }
+    for (const e of list) {
+      const scope = e.scope === 'project' || e.scope === 'session' ? e.scope : 'user'
+      buckets[scope].push(e)
+    }
+    
+    for (const [scope, bucket] of Object.entries(buckets)) {
+      if (bucket.length < 4) continue
+      
+      for (let off = 0; off < bucket.length; off += CHUNK_SIZE) {
+        const chunk = bucket.slice(off, off + CHUNK_SIZE)
+        const groups = await clusterBatch(ctx, agent, chunk)
+        if (!groups) continue
+        
+        const idx = {}
+        chunk.forEach((e, i) => { idx[i] = e })
+        
+        for (const g of groups) {
+          const idxs = (Array.isArray(g.memberIndexes) ? g.memberIndexes : [])
+            .map(n => Number(n)).filter(n => Number.isInteger(n) && idx[n])
+          if (!idxs.length) continue
+          
+          const members = idxs.map(n => idx[n])
+          const name = String(g.name || '卡').trim().slice(0, 24)
+          const summary = String(g.summary || '').replace(/\s+/g, ' ').trim()
+          if (!summary) continue
+          
+          const kw = new Set()
+          members.forEach(m => (Array.isArray(m.keywords) || []).forEach(k => k && k.trim() && kw.add(k.trim())))
+          
+          try {
             await memory.save({
-              id: m.id,
-              content: m.content,
-              tags: [...new Set([...(Array.isArray(m.tags) ? m.tags : []), CONSOLIDATED_TAG])],
-              keywords: m.keywords,
-              title: m.title,
-              scope: m.scope,
-              cwd: m.cwd,
-            }).catch(() => {})
+              content: summary,
+              tags: ['auto', 'conversation', CARD_TAG, type],
+              title: name,
+              keywords: [...kw].slice(0, 6),
+              scope,
+            })
+            for (const m of members) {
+              await memory.save({
+                id: m.id,
+                content: m.content,
+                tags: [...new Set([...(Array.isArray(m.tags) ? m.tags : []), CONSOLIDATED_TAG])],
+                keywords: m.keywords,
+                title: m.title,
+                scope: m.scope,
+                cwd: m.cwd,
+              }).catch(() => {})
+            }
+            totalCards++
+            apt(`card: [${type}] "${name}" members=${members.length}`)
+          } catch (e) {
+            apt('save error: ' + (e && e.message ? e.message : String(e)))
           }
-          totalCards++
-          apt(`card: "${name}" members=${members.length}`)
-        } catch (e) {
-          apt('save error: ' + (e && e.message ? e.message : String(e)))
         }
       }
     }
   }
+  
   apt(`consolidate done: cards=${totalCards}`)
 }
 
