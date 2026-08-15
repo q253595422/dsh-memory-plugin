@@ -1,50 +1,57 @@
-# Your patch layer for this dsh profile, applied after every bundle layer:
-# a top-level YAML array of loader patch entries (id-targeted config
-# overrides, disables, and insert lists; `!!js` expressions allowed).
+# DSH Memory Plugin — 安装示例补丁层
+#
+# 把这个文件的内容合并进你的 profile patch（例如
+#   $DSH_HOME/profiles/web/cordis.patch.yml
+#   DSH_HOME 默认是 ~/.dsh），并把本目录下的 .mjs 文件放到
+# cordis.patch.yml 同目录（或按引用路径放置）。
+#
+# 插件文件与 patch 同目录时，引用路径写 './xxx.mjs'。
 
-# The shared memory service. `memhost3.mjs` sits beside this patch file and
-# publishes the `memory` service (durable store under `$DSH_HOME/memory/`).
-# It is a HOST row: the service is read by tool rows from more than one
-# session, so it cannot live behind any preset realm.
-# v3: title/keywords/scope/pinned fields, keyword relevance search,
-# per-scope filters, pin/unpin; all returned entries are undefined-free JSON.
+# 核心记忆服务（HOST 行）：memhost3.mjs 发布 `memory` 服务，
+# 提供 JSON 文件存储 + 关键词加权 relevance 搜索 + pin/unpin。
+# v3 起包含 title/keywords/scope/pinned 字段，返回的条目均为纯净 JSON。
+# 该服务被多个会话的工具行读取，必须放在 preset realm 之外的 host 层。
 - insert:
     - id: memory-host
       name: './memhost3.mjs'
 
-# The automatic memory row. `auto-memory5.mjs` listens to
-# `agent/turn-stopping` and writes one entry per human-initiated turn into
-# the shared `memory` service. v5: 借鉴 Memorax Code 四类 Memory 架构
-# (coding/repo/personal/procedure)，LLM 结构化输出自动分类，按类型桶分
-# 进行知识卡片聚类合并。Fire-and-forget：不阻塞会话关闭。HOST 行，必须
-# 在 `memory-host` 之后。
+# 自动记忆（HOST 行）：auto-memory5.mjs 监听 agent/turn-stopping，
+# 每人发起的一轮对话写入一条记忆。v5 借鉴 Memorax Code 四类 Memory
+# 架构（coding/repo/personal/procedure），LLM 结构化输出自动分类，
+# 按类型桶分进行知识卡片聚类合并（同类 ≥12 条自动聚类）。Fire-and-forget，
+# 不阻塞会话关闭。必须在 memory-host 之后。
 - insert:
     - id: auto-memory
       name: './auto-memory5.mjs'
 
-# The memory recall injection row. `memory-inject2.mjs` registers one
-# `systemPrompt.section` (`memory:recall`, order 95) whose text is a short
-# snapshot of the shared store — pinned entries first, then the newest auto
-# summaries — so long-term knowledge is available to every model request
-# without the model calling `memory_search`. It injects into the HOST
-# `systemPrompt` registry, so it cannot live behind any preset realm.
-# Order: after the memory service (and ideally after auto-memory so refresh
-# sees newest entries); refreshes on a 15s timer and on turn-stopping.
+# 记忆召回注入（HOST 行）：memory-inject2.mjs 注册一个
+# systemPrompt.section（memory:recall，order 95），把记忆库快照
+# （置顶优先，再按时间）注入每次模型请求，无需模型显式调用 memory_search。
+# 需要 memory 服务；建议在 auto-memory 之后以便看到最新条目。
 - insert:
     - id: memory-inject
       name: './memory-inject2.mjs'
 
-# The memory visualization UI plugin. `memui.mjs` exposes the memory
-# service via window.__dshMemory for debugging and future UI integration.
+# 模型工具（HOST 行）：memtools2.mjs 注册 memory_save / memory_search /
+# memory_list / memory_pin / memory_forget / memory_info 六个工具，
+# 供 Agent 在会话内读写记忆。需要 memory-host。
 - insert:
-    - id: memui
-      name: './memui.mjs'
+    - id: tool-memory
+      name: './memtools2.mjs'
 
-# The memory panel client plugin. `memui-client.mjs` registers a '记忆'
-# settings section with full CRUD UI (search, pin, delete).
-- insert:
-    - id: memui-client
-      name: './memui-client.mjs'
-      client: true
-
-# ─── v5 知识卡片聚类已集成到 auto-memory5.mjs（按类型桶分，分批 LLM 聚类）
+# 独立记忆面板（可选）：memory-server.mjs 是一个轻量 HTTP 服务，
+# 在 3081 端口提供 REST API（/api/memories 等），并托管独立的
+# memory-panel.html 网页面板。它不是 Cordis 插件，用 node 直接启动：
+#   node memory-server.mjs
+# 浏览器打开 http://localhost:3081 使用。
+#
+# 注意：如果你的 DSH 部署已经带有官方 ui-memory 客户端面板（通过
+# 3081 REST API 读取记忆），为避免设置页出现两个「记忆」入口，可按 id
+# 禁用官方那一行：
+# - id: ui-memory
+#   name: '@deepseek-ai/dsh-client-ui-memory'
+#   disabled: true
+#
+# 动态记忆编辑器（可选，另一种 UI）：memui.client.mjs + memui.host.mjs
+# 是「记忆编辑器」动态插件模板，用 cordis_define / cordis_run 加载，
+# 详见 memui.install.md。它支持查看/搜索/新增/编辑/删除/固定。

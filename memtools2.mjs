@@ -1,4 +1,4 @@
-// memtools2.mjs — model-facing memory tools v2 for the `memory` agent preset.
+﻿// memtools2.mjs — model-facing memory tools v2 for the `memory` agent preset.
 //
 // v2 over memtools.mjs:
 //   - entry schema exposes the v3 store fields: title, keywords, scope, cwd,

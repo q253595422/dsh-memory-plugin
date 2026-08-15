@@ -52,7 +52,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   // Serve HTML panel
-  if ((url.pathname === '/' || url.pathname === '/index.html') && req.method === 'GET') {
+  if ((url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/panel') && req.method === 'GET') {
     const htmlPath = join(__dirname, 'memory-panel.html');
     if (existsSync(htmlPath)) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

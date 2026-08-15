@@ -1,4 +1,4 @@
-// memory-inject2.mjs — host-plane memory recall injection (rev B).
+﻿// memory-inject2.mjs — host-plane memory recall injection (rev B).
 //
 // Registers one `systemPrompt.section` (`memory:recall`, order 95 — after the
 // persona, before tool guidance at 100+) whose text is a SHORT snapshot of the

@@ -1,161 +1,104 @@
 # DSH Memory Plugin
 
-基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的跨会话持久记忆系统，通过 Cordis 宿主行（host-plane）实现六项能力升级。
+基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的**跨会话持久记忆插件**，通过 Cordis 宿主行（host-plane）实现记忆的全生命周期管理：自动记录、分层存储、结构化摘要、语义检索、知识卡片聚类，以及可视化记忆面板。
 
-## 功能特性
+## ✨ 功能特性
 
 | # | 功能 | 实现 |
-|---|---|---|
-| ③ | **会话标题** | LLM 结构化摘要，自动生成 12 字内中文标题 |
-| ② | **记忆分层 + 类型分类** | `user` / `project`（自动识别 cwd）/ `session`；按 Memorax Code 四类 Memory 自动分类（coding / repo / personal / procedure） |
-| ④ | **固定重要记忆** | pin/unpin，免合并、免卡片整理 |
-| ① | **记忆自动注入** | systemPrompt section（order 95），每 15s 刷新 |
-| ⑥ | **知识卡片** | 同类 ≥12 条候选自动 LLM 聚类合并（分批 6 条/批） |
-| ⑤ | **语义搜索** | 关键词加权 relevance search（无 embedding） |
-| ⑦ | **记忆管理面板** | 动态插件：设置页「记忆」标签，搜索/固定/删除/类型统计 |
+|---|------|------|
+| ① | **会话标题** | LLM 结构化摘要，自动生成标题 |
+| ② | **记忆分层 + 类型分类** | `user` / `project`（按 cwd 自动识别）/ `session` 三层；按 Memorax Code 四类 Memory 自动分类：`coding` / `repo` / `personal` / `procedure` |
+| ③ | **固定重要记忆** | pin / unpin，置顶优先展示，免合并、免卡片整理 |
+| ④ | **记忆自动注入** | systemPrompt section（order 95），每条模型请求自动带记忆快照，15s 刷新 |
+| ⑤ | **知识卡片** | 同类 ≥12 条候选自动 LLM 聚类合并（分桶 6 条/批） |
+| ⑥ | **语义搜索** | 关键词加权 relevance search（纯 JS，无 embedding 依赖） |
+| ⑦ | **记忆设置页** | 「记忆编辑器」设置页：搜索 / 固定 / 删除 / 编辑 / 新增 |
 
-## 架构
+## 🏗 架构
 
 ```
-宿主行 (HOST, cordis.patch.yml)          Agent 工具层 (preset)
-┌─────────────────────────┐              ┌─────────────────────┐
-│ memory-host (memhost3)  │◄──────┐      │ tool-memory         │
-│   - MemoryService       │       │      │   memory_save       │
-│   - JSON 文件存储        │       │      │   memory_search     │
-│   - keyword 索引搜索    │       │      │   memory_forget     │
-└─────────────────────────┘       │      │   memory_pin        │
-┌─────────────────────────┐       │      │   memory_info       │
-│ auto-memory5            │◄──────┘      │   memory_list       │
-│   - turn-stopping 监听   │              └─────────────────────┘
-│   - LLM 结构化摘要      │
-│   - 四类 Memory 分类    │
-│     (coding/repo/       │
-│      personal/procedure)│
-│   - bigram 去重合并     │
-│   - scope 自动识别      │
-│   - consolidation 卡片  │
-└─────────────────────────┘
-┌─────────────────────────┐
-│ memory-inject2          │
-│   - systemPrompt section│
-│   - pinned 优先展示     │
-│   - 15s 定时刷新        │
-└─────────────────────────┘
+宿主层 (HOST, cordis.patch.yml)          Agent 工具层 (preset / memtools)
+┌────────────────────────────────┐       ┌──────────────────────────┐
+│ memory-host (memhost3.mjs)     │       │ tool-memory (memtools2)  │
+│  - MemoryService (ctx.memory)  │       │  memory_save             │
+│  - JSON 文件存储               │       │  memory_search           │
+│  - keyword 索引 relevance 搜索 │       │  memory_list             │
+│  - pin/unpin / per-scope 过滤  │       │  memory_pin              │
+├────────────────────────────────┤       │  memory_forget           │
+│ auto-memory5.mjs               │       │  memory_info             │
+│  - turn-stopping 监听          │       └──────────────────────────┘
+│  - LLM 结构化摘要              │       ┌──────────────────────────┐
+│  - 四类 Memory 自动分类        │       │ 记忆设置页 UI            │
+│  - bigram 去重合并             │       │  (memui 动态插件)        │
+│  - scope 自动识别              │       │  - 列表/搜索/固定/删除   │
+│  - consolidation 知识卡片      │       │  - 编辑/新增             │
+├────────────────────────────────┤       └──────────────────────────┘
+│ memory-inject2.mjs             │
+│  - systemPrompt section (95)   │
+│  - 15s 定时刷新 + turn 刷新    │
+└────────────────────────────────┘
 ```
 
-## 安装
+记忆数据统一存放在：`$DSH_HOME/memory/memories.json`（默认 `~/.dsh/memory/memories.json`）。
 
-### 1. 复制宿主行文件到你的 profile
+## 📦 安装
 
-```powershell
-$PROFILE = "$env:USERPROFILE\.dsh\profiles\web"
-Copy-Item memhost3.mjs auto-memory5.mjs memory-inject2.mjs -Destination $PROFILE
+### 1. 复制插件文件
+
+把本仓库的 `.mjs` 文件复制到你的 profile 目录，例如：
+
+```
+$DSH_HOME/profiles/web/memory-plugin/
 ```
 
-### 2. 追加 patch 配置到 `cordis.patch.yml`
+（`$DSH_HOME` 默认是 `~/.dsh`）
 
-```yaml
-# memory-host: shared memory service (HOST row)
-- insert:
-    - id: memory-host
-      name: './memhost3.mjs'
+### 2. 配置 patch 层
 
-# auto-memory: turn-stopping listener + consolidation (HOST row)
-- insert:
-    - id: auto-memory
-      name: './auto-memory5.mjs'
+把 [cordis.patch.yml](./cordis.patch.yml) 中的内容合并到你的 profile patch，例如
+`$DSH_HOME/profiles/web/cordis.patch.yml`。它注册 4 个宿主行：
 
-# memory-inject: systemPrompt injection (HOST row)
-- insert:
-    - id: memory-inject
-      name: './memory-inject2.mjs'
+| id | 文件 | 作用 |
+|----|------|------|
+| `memory-host` | memhost3.mjs | 发布 `memory` 服务（必须最先加载） |
+| `auto-memory` | auto-memory5.mjs | 每轮对话自动记忆 |
+| `memory-inject` | memory-inject2.mjs | 记忆注入模型提示词 |
+| `tool-memory` | memtools2.mjs | 注册 memory_* 六个模型工具 |
+
+### 3. （可选）记忆设置页 UI
+
+「记忆编辑器」设置页是一个**动态 Cordis Plugin**（需要浏览器授权），按
+[memui.install.md](./memui.install.md) 的步骤加载 `memui.host.mjs` +
+`memui.client.mjs` 模板，然后在左下角 ⚙️ 设置 → 「记忆编辑器」使用。
+
+> 注意：如果部署自带官方 `ui-memory` 客户端面板，为避免设置页出现两个
+> 「记忆」入口，可按 id 禁用官方那一行（详见 cordis.patch.yml 注释）。
+
+### 4. （可选）独立 3081 网页面板
+
+```bash
+node memory-server.mjs   # 启动后打开 http://localhost:3081
 ```
 
-> 注意顺序：`memory-host` 必须在其他两行之前（确保 memory 服务先可用）。
+## 🧰 可用工具
 
-### 3. （可选）Agent 工具层
+| 工具 | 说明 |
+|------|------|
+| `memory_save` | 保存一条记忆（可带 title/keywords/scope/pinned） |
+| `memory_search` | 关键词加权语义搜索 |
+| `memory_list` | 列出记忆（可按 scope/limit 过滤） |
+| `memory_pin` | 固定 / 取消固定 |
+| `memory_forget` | 删除记忆 |
+| `memory_info` | 统计信息（总条数 / 分层 / 置顶等） |
 
-在 `.agent-presets/<your-preset>/agent.cordis.yml` 追加：
+## 🔧 配置
 
-```yaml
-- id: tool-memory
-  name: './memtools2.mjs'
-```
+全部通过 `cordis.patch.yml` 完成，无需额外配置文件。默认行为可改：
 
-## 工作原理
+- 记忆文件位置：`memhost3.mjs` / `memory-server.mjs` 中的 `$DSH_HOME/memory/`
+- 注入顺序：`memory-inject2.mjs` 中的 `order: 95`
+- 自动记忆开关：`auto-memory5.mjs` 中按 `agent/turn-stopping` 事件触发
 
-### 自动记忆 (`auto-memory5.mjs`)
+## 📄 License
 
-1. 监听 `agent/turn-stopping` 事件
-2. 提取本轮 `userText` + `assistantText`
-3. 调用 LLM 结构化摘要（`{title, summary, keywords}`）
-4. Bigram Jaccard 相似度去重（阈值 ≥0.55）
-5. 写入 `memory` 服务（scope 由 session.cwd 自动推导）
-6. 若 unconsolidated auto 条目 ≥12，触发 scope-bucketed 聚类
-
-### 知识卡片聚类 (`consolidate`)
-
-- **分桶**：按 scope（user/project/session）分组
-- **分批**：每批最多 6 条 × 80 字截断（避免 LLM 长输入失败）
-- **聚类**：LLM 按主题分组 → 合并为卡片（`card` 标签）
-- **标记**：成员打 `consolidated` 标签（保留原文，免重复处理）
-- **fire-and-forget**：不阻塞回合关闭
-
-### 记忆注入 (`memory-inject2.mjs`)
-
-- 注册 `systemPrompt.section(name='memory:recall', order=95)`
-- 展示顺序：pinned 条目优先（⭐），其次最新 6 条 auto 摘要
-- 刷新策略：15s 定时（无条件）+ turn-stopping 即时刷新
-
-### 四类 Memory 自动分类 (`auto-memory5.mjs`，借鉴 Memorax Code)
-
-LLM 摘要输出结构化 JSON：`{ type, title, summary, keywords }`，其中 `type` 四选一：
-
-| type | 含义 | 典型内容 |
-|---|---|---|
-| `coding` | 工程经验 | 已验证的修复、失败方案、设计依据、常见陷阱 |
-| `repo` | 仓库知识 | 架构地图、模块职责、Commit/PR 历史证据 |
-| `personal` | 个人偏好 | 沟通风格、解释深度、结果呈现偏好 |
-| `procedure` | 流程记忆 | 可复用步骤、检查清单、前置条件、验证要求 |
-
-知识卡片聚类按 **类型 + scope** 双桶分：同类记忆 ≥12 条才触发聚类，避免跨类型混杂。
-
-### 记忆管理面板 (`memui`，动态插件)
-
-设置页新增「记忆」标签（见 `memui.install.md`）：
-- 全部记忆列表（📌 固定置顶）+ 按类型统计
-- 实时搜索（标题/内容/标签）
-- 一键固定 / 取消固定 / 删除
-
-### 存储服务 (`memhost3.mjs`)
-
-- 存储：单 JSON 文件 `$DSH_HOME/memory/memories.json`
-- 写入：promise-chain 串行化（防并发冲突）
-- 搜索：content 命中 (+4) + keyword 命中 (+5) + pinned (+2) + 时间衰减
-- 清理：`clean()` 剔除 `undefined` 值键（lossless JSON）
-
-## 技术约束
-
-- **无 `#private` 字段**：Cordis Service `Object.create(this)` 包装不支持 JS private fields，全部用 `_` 前缀
-- **ESM 缓存**：改 `.mjs` 内容必须换文件名 + 新 URL 才能热生效
-- **宿主行 vs preset**：`memory` 服务是宿主行（跨会话共享），工具层是 preset（单会话）
-- **HMR 兼容**：patch 文件修改自动热重载，无需重启宿主
-
-## 文件说明
-
-| 文件 | 大小 | 用途 |
-|---|---|---|
-| `memhost3.mjs` | ~12KB | 宿主 memory 服务（save/search/list/forget/pin/stats） |
-| `auto-memory5.mjs` | ~14KB | 自动记忆 + 四类分类 + consolidation（turn-stopping 监听） |
-| `memory-inject2.mjs` | ~3KB | systemPrompt 注入（15s 刷新） |
-| `memtools2.mjs` | ~8KB | Agent 工具层（6 个 memory 工具） |
-| `memui.host.mjs` | ~3KB | 记忆面板 Host half（list/pin/forget RPC） |
-| `memui.client.mjs` | ~6KB | 记忆面板 Client half（设置页「记忆」标签） |
-| `memui.install.md` | — | 记忆面板动态插件安装说明 |
-| `cordis.patch.yml` | ~2KB | 宿主 patch 配置示例 |
-| `README.md` | ~5KB | 本文档 |
-
-## License
-
-MIT — 欢迎 fork 和改进！
-
+MIT

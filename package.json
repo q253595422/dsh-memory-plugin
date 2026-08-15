@@ -1,7 +1,7 @@
 {
   "name": "dsh-memory-plugin",
-  "version": "5.0.0",
-  "description": "DSH Memory Plugin — 六项升级 + 四类 Memory 架构（借鉴 Memorax Code）。跨会话持久记忆：标题、分层、固定、注入、知识卡片、语义搜索，并提供「记忆」设置页面板。",
+  "version": "5.1.0",
+  "description": "DSH Memory Plugin — 跨会话持久记忆系统（基于 DeepSeek Harness / Cordis）。自动记录、分层存储、结构化摘要、语义搜索、知识卡片聚类与「记忆编辑器」设置页。",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -29,25 +29,15 @@
   "files": [
     "*.mjs",
     "*.yml",
+    "*.md",
+    "*.html",
     "index.mjs",
     "client.mjs",
-    "LICENSE",
     "README.md",
     "memui.install.md"
   ],
   "scripts": {
-    "test": "echo \"Run: npx cordis --verify\" && node --check index.mjs && node --check client.mjs && node --check memhost3.mjs && node --check auto-memory5.mjs && node --check memory-inject2.mjs && node --check memtools2.mjs"
-  },
-  "dsh": {
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-locale"
-      ],
-      "description": "注册 DSH 设置面板「记忆」标签页，提供搜索/固定/删除等管理功能。"
-    }
+    "test": "node --check index.mjs && node --check client.mjs && node --check memhost3.mjs && node --check auto-memory5.mjs && node --check memory-inject2.mjs && node --check memtools2.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^1.0.0"

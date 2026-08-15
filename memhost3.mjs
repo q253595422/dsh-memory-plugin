@@ -1,4 +1,4 @@
-// memhost3.mjs — host-plane `memory` service v3 for the DeepSeek Harness.
+﻿// memhost3.mjs — host-plane `memory` service v3 for the DeepSeek Harness.
 //
 // Upgrades over v2 (memhost2.mjs):
 //   - ALL entries returned to callers are `clean`ed: `undefined`-valued keys

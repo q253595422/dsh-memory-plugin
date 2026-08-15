@@ -1,4 +1,4 @@
-// auto-memory5.mjs — host-plane automatic memory v5 (Memorax-inspired).
+﻿// auto-memory5.mjs — host-plane automatic memory v5 (Memorax-inspired).
 //
 // 借鉴 Memorax Code 的四类 Memory 架构：
 // - coding: 工程经验（已验证的修复、失败方案、设计依据、常见陷阱）
@@ -397,3 +397,4 @@ export function apply(ctx) {
 }
 
 export default { name, inject, apply }
+

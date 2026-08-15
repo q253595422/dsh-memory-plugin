@@ -1,4 +1,4 @@
-// index.mjs — Host-side aggregate entry for dsh-memory-plugin.
+﻿// index.mjs — Host-side aggregate entry for dsh-memory-plugin.
 // Re-exports the three host rows so callers can load them as a single
 // compound plugin (e.g. name: 'dsh-memory-plugin/host/memhost').
 
