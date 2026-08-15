@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DSH 记忆管理面板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { margin-bottom: 20px; color: #2c3e50; }
+    .stats {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat-chip {
+      padding: 6px 14px;
+      background: #fff;
+      border-radius: 20px;
+      font-size: 13px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .search-box {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .search-box:focus { outline: none; border-color: #4a90e2; }
+    .memory-list { display: flex; flex-direction: column; gap: 12px; }
+    .memory-card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: box-shadow 0.2s;
+    }
+    .memory-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .memory-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .memory-title { font-weight: 600; font-size: 15px; flex: 1; }
+    .memory-content {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      max-height: 100px;
+      overflow: hidden;
+    }
+    .memory-meta {
+      font-size: 11px;
+      color: #999;
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      padding: 4px 12px;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #f0f0f0; }
+    .btn-danger { color: #e74c3c; border-color: #e74c3c; }
+    .btn-danger:hover { background: #e74c3c; color: #fff; }
+    .btn-pin { color: #f39c12; border-color: #f39c12; }
+    .btn-pin:hover { background: #f39c12; color: #fff; }
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+      font-size: 14px;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .pinned { border-left: 3px solid #f39c12; }
+    .refresh-btn {
+      padding: 8px 16px;
+      background: #4a90e2;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .refresh-btn:hover { background: #357abd; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧠 DSH 记忆管理面板</h1>
+    <button class="refresh-btn" onclick="loadMemories()">刷新</button>
+    <div class="stats" id="stats"></div>
+    <input type="text" class="search-box" id="search" placeholder="搜索记忆..." oninput="filterMemories()">
+    <div class="memory-list" id="list">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    let allMemories = [];
+    const TYPE_LABELS = {
+      coding: '工程经验', repo: '仓库知识', personal: '个人偏好',
+      procedure: '流程记忆', card: '知识卡片', auto: '自动记录',
+      'user-preference': '偏好', conversation: '会话', other: '其他'
+    };
+
+    function typeOf(tags) {
+      const order = ['coding', 'repo', 'personal', 'procedure', 'card', 'auto', 'user-preference', 'conversation'];
+      for (const t of order) {
+        if (tags.includes(t)) return t;
+      }
+      return 'other';
+    }
+
+    async function loadMemories() {
+      try {
+        const res = await fetch(`${API_BASE}/api/memories`);
+        const data = await res.json();
+        allMemories = data.entries || [];
+        renderStats();
+        renderMemories(allMemories);
+      } catch (err) {
+        console.error('Failed to load memories:', err);
+        document.getElementById('list').innerHTML = '<div class="empty">加载失败: ' + err.message + '<br>请确保记忆服务器正在运行</div>';
+      }
+    }
+
+    function renderStats() {
+      const stats = {};
+      allMemories.forEach(m => {
+        const type = typeOf(m.tags || []);
+        stats[type] = (stats[type] || 0) + 1;
+      });
+      const chips = Object.entries(stats).map(([type, count]) =>
+        `<div class="stat-chip">${TYPE_LABELS[type] || type}: ${count}</div>`
+      ).join('');
+      document.getElementById('stats').innerHTML = chips;
+    }
+
+    function renderMemories(memories) {
+      if (memories.length === 0) {
+        document.getElementById('list').innerHTML = '<div class="empty">暂无记忆，多和团团聊聊天就会自动记录~</div>';
+        return;
+      }
+      const html = memories.map(m => `
+        <div class="memory-card ${m.pinned ? 'pinned' : ''}">
+          <div class="memory-header">
+            <span class="memory-title">${m.pinned ? '📌 ' : ''}${m.title || '无标题'}</span>
+            <button class="btn btn-pin" onclick="togglePin('${m.id}', ${!m.pinned})">${m.pinned ? '取消固定' : '固定'}</button>
+            <button class="btn btn-danger" onclick="deleteMemory('${m.id}')">删除</button>
+          </div>
+          <div class="memory-content">${m.content || ''}</div>
+          <div class="memory-meta">
+            <span>${(m.tags || []).map(t => TYPE_LABELS[t] || t).join(' · ')}</span>
+            ${m.scope ? `<span>[${m.scope}]</span>` : ''}
+            ${m.updatedAt ? `<span>${new Date(m.updatedAt).toLocaleString('zh-CN')}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+      document.getElementById('list').innerHTML = html;
+    }
+
+    function filterMemories() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const filtered = allMemories.filter(m => {
+        if (!query) return true;
+        return (m.title || '').toLowerCase().includes(query) ||
+               (m.content || '').toLowerCase().includes(query) ||
+               (m.tags || []).some(t => t.toLowerCase().includes(query));
+      });
+      renderMemories(filtered);
+    }
+
+    async function togglePin(id, pinned) {
+      try {
+        await fetch(`${API_BASE}/api/memories/pin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, pinned })
+        });
+        await loadMemories();
+      } catch (err) {
+        console.error('Failed to toggle pin:', err);
+        alert('操作失败: ' + err.message);
+      }
+    }
+
+    async function deleteMemory(id) {
+      if (!confirm('确定要删除这条记忆吗？')) return;
+      try {
+        await fetch(`${API_BASE}/api/memories/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        await loadMemories();
+      } catch (err) {
+        console.error('Failed to delete:', err);
+        alert('删除失败: ' + err.message);
+      }
+    }
+
+    // Load on page load
+    loadMemories();
+  </script>
+</body>
+</html>
