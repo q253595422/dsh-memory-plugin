@@ -1,0 +1,58 @@
+{
+  "name": "dsh-memory-plugin",
+  "version": "5.0.0",
+  "description": "DSH Memory Plugin — 六项升级 + 四类 Memory 架构（借鉴 Memorax Code）。跨会话持久记忆：标题、分层、固定、注入、知识卡片、语义搜索，并提供「记忆」设置页面板。",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "memory",
+    "cordis-plugin",
+    "persistent-memory",
+    "memorax"
+  ],
+  "license": "MIT",
+  "author": "q253595422",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/q253595422/dsh-memory-plugin.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs",
+    "./host/memhost": "./memhost3.mjs",
+    "./host/auto-memory": "./auto-memory5.mjs",
+    "./host/memory-inject": "./memory-inject2.mjs",
+    "./memtools": "./memtools2.mjs",
+    "./client": "./client.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "*.mjs",
+    "*.yml",
+    "index.mjs",
+    "client.mjs",
+    "LICENSE",
+    "README.md",
+    "memui.install.md"
+  ],
+  "scripts": {
+    "test": "echo \"Run: npx cordis --verify\" && node --check index.mjs && node --check client.mjs && node --check memhost3.mjs && node --check auto-memory5.mjs && node --check memory-inject2.mjs && node --check memtools2.mjs"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "description": "注册 DSH 设置面板「记忆」标签页，提供搜索/固定/删除等管理功能。"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
