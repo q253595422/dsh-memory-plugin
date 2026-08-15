@@ -1,4 +1,4 @@
-﻿# Your patch layer for this dsh profile, applied after every bundle layer:
+# Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
 # overrides, disables, and insert lists; `!!js` expressions allowed).
 
@@ -39,5 +39,12 @@
 - insert:
     - id: memui
       name: './memui.mjs'
+
+# The memory panel client plugin. `memui-client.mjs` registers a '记忆'
+# settings section with full CRUD UI (search, pin, delete).
+- insert:
+    - id: memui-client
+      name: './memui-client.mjs'
+      client: true
 
 # ─── v5 知识卡片聚类已集成到 auto-memory5.mjs（按类型桶分，分批 LLM 聚类）
