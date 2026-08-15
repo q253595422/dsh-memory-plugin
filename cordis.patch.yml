@@ -14,15 +14,18 @@
 
 # The automatic memory row. `auto-memory5.mjs` listens to
 # `agent/turn-stopping` and writes one entry per human-initiated turn into
-# the shared `memory` service. v5: 鍊熼壌 Memorax Code 鍥涚被 Memory 鏋舵瀯
-# (coding/repo/personal/procedure)锛孡LM 缁撴瀯鍖栬緭鍑鸿嚜鍔ㄥ垎绫伙紝鎸夌被鍨嬫《鍒?# 杩涜鐭ヨ瘑鍗＄墖鑱氱被鍚堝苟銆侳ire-and-forget锛氫笉闃诲浼氳瘽鍏抽棴銆侶OST 琛岋紝蹇呴』鍦?# `memory-host` 涔嬪悗銆?- insert:
+# the shared `memory` service. v5: 借鉴 Memorax Code 四类 Memory 架构
+# (coding/repo/personal/procedure)，LLM 结构化输出自动分类，按类型桶分
+# 进行知识卡片聚类合并。Fire-and-forget：不阻塞会话关闭。HOST 行，必须
+# 在 `memory-host` 之后。
+- insert:
     - id: auto-memory
       name: './auto-memory5.mjs'
 
 # The memory recall injection row. `memory-inject2.mjs` registers one
 # `systemPrompt.section` (`memory:recall`, order 95) whose text is a short
-# snapshot of the shared store 鈥?pinned entries first, then the newest auto
-# summaries 鈥?so long-term knowledge is available to every model request
+# snapshot of the shared store — pinned entries first, then the newest auto
+# summaries — so long-term knowledge is available to every model request
 # without the model calling `memory_search`. It injects into the HOST
 # `systemPrompt` registry, so it cannot live behind any preset realm.
 # Order: after the memory service (and ideally after auto-memory so refresh
@@ -31,4 +34,10 @@
     - id: memory-inject
       name: './memory-inject2.mjs'
 
-# 鈹€鈹€ Consolidation is now baked into auto-memory4.mjs (scope-bucketed, chunked)
+# The memory visualization UI plugin. `memui.mjs` exposes the memory
+# service via window.__dshMemory for debugging and future UI integration.
+- insert:
+    - id: memui
+      name: './memui.mjs'
+
+# ─── v5 知识卡片聚类已集成到 auto-memory5.mjs（按类型桶分，分批 LLM 聚类）

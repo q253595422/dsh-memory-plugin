@@ -1,4 +1,4 @@
-﻿# DSH Memory Plugin
+# DSH Memory Plugin
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的跨会话持久记忆系统，通过 Cordis 宿主行（host-plane）实现六项能力升级。
 
@@ -7,11 +7,12 @@
 | # | 功能 | 实现 |
 |---|---|---|
 | ③ | **会话标题** | LLM 结构化摘要，自动生成 12 字内中文标题 |
-| ② | **记忆分层** | `user` / `project`（自动识别 cwd）/ `session` |
+| ② | **记忆分层 + 类型分类** | `user` / `project`（自动识别 cwd）/ `session`；按 Memorax Code 四类 Memory 自动分类（coding / repo / personal / procedure） |
 | ④ | **固定重要记忆** | pin/unpin，免合并、免卡片整理 |
 | ① | **记忆自动注入** | systemPrompt section（order 95），每 15s 刷新 |
-| ⑥ | **知识卡片** | ≥12 条候选自动 LLM 聚类合并（分批 6 条/批） |
+| ⑥ | **知识卡片** | 同类 ≥12 条候选自动 LLM 聚类合并（分批 6 条/批） |
 | ⑤ | **语义搜索** | 关键词加权 relevance search（无 embedding） |
+| ⑦ | **记忆管理面板** | 动态插件：设置页「记忆」标签，搜索/固定/删除/类型统计 |
 
 ## 架构
 
@@ -24,9 +25,12 @@
 │   - keyword 索引搜索    │       │      │   memory_forget     │
 └─────────────────────────┘       │      │   memory_pin        │
 ┌─────────────────────────┐       │      │   memory_info       │
-│ auto-memory4            │◄──────┘      │   memory_list       │
+│ auto-memory5            │◄──────┘      │   memory_list       │
 │   - turn-stopping 监听   │              └─────────────────────┘
 │   - LLM 结构化摘要      │
+│   - 四类 Memory 分类    │
+│     (coding/repo/       │
+│      personal/procedure)│
 │   - bigram 去重合并     │
 │   - scope 自动识别      │
 │   - consolidation 卡片  │
@@ -103,6 +107,26 @@ Copy-Item memhost3.mjs auto-memory5.mjs memory-inject2.mjs -Destination $PROFILE
 - 展示顺序：pinned 条目优先（⭐），其次最新 6 条 auto 摘要
 - 刷新策略：15s 定时（无条件）+ turn-stopping 即时刷新
 
+### 四类 Memory 自动分类 (`auto-memory5.mjs`，借鉴 Memorax Code)
+
+LLM 摘要输出结构化 JSON：`{ type, title, summary, keywords }`，其中 `type` 四选一：
+
+| type | 含义 | 典型内容 |
+|---|---|---|
+| `coding` | 工程经验 | 已验证的修复、失败方案、设计依据、常见陷阱 |
+| `repo` | 仓库知识 | 架构地图、模块职责、Commit/PR 历史证据 |
+| `personal` | 个人偏好 | 沟通风格、解释深度、结果呈现偏好 |
+| `procedure` | 流程记忆 | 可复用步骤、检查清单、前置条件、验证要求 |
+
+知识卡片聚类按 **类型 + scope** 双桶分：同类记忆 ≥12 条才触发聚类，避免跨类型混杂。
+
+### 记忆管理面板 (`memui`，动态插件)
+
+设置页新增「记忆」标签（见 `memui.install.md`）：
+- 全部记忆列表（📌 固定置顶）+ 按类型统计
+- 实时搜索（标题/内容/标签）
+- 一键固定 / 取消固定 / 删除
+
 ### 存储服务 (`memhost3.mjs`)
 
 - 存储：单 JSON 文件 `$DSH_HOME/memory/memories.json`
@@ -122,11 +146,14 @@ Copy-Item memhost3.mjs auto-memory5.mjs memory-inject2.mjs -Destination $PROFILE
 | 文件 | 大小 | 用途 |
 |---|---|---|
 | `memhost3.mjs` | ~12KB | 宿主 memory 服务（save/search/list/forget/pin/stats） |
-| `auto-memory5.mjs` | ~14KB | 自动记忆 + consolidation（turn-stopping 监听） |
+| `auto-memory5.mjs` | ~14KB | 自动记忆 + 四类分类 + consolidation（turn-stopping 监听） |
 | `memory-inject2.mjs` | ~3KB | systemPrompt 注入（15s 刷新） |
 | `memtools2.mjs` | ~8KB | Agent 工具层（6 个 memory 工具） |
-| `cordis.patch.yml` | ~400B | 宿主 patch 配置示例 |
-| `README.md` | ~3KB | 本文档 |
+| `memui.host.mjs` | ~3KB | 记忆面板 Host half（list/pin/forget RPC） |
+| `memui.client.mjs` | ~6KB | 记忆面板 Client half（设置页「记忆」标签） |
+| `memui.install.md` | — | 记忆面板动态插件安装说明 |
+| `cordis.patch.yml` | ~2KB | 宿主 patch 配置示例 |
+| `README.md` | ~5KB | 本文档 |
 
 ## License
 
